@@ -16,13 +16,15 @@
 ' TODO:
 '   - cambio estado fantasma
 '   - resolver bloqueo fantasmas	(ejercicio 1)
-'	- varias pantallas				(ejercicio 2)
-'	- movimiento continuo pacman	(ejercicio 3)
+'	  - varias pantallas            (ejercicio 2)
+'	  - movimiento continuo pacman	(ejercicio 3)
+'   - frutas                      (ejercicio 4)
 
 
 #include <memcopy.bas>
 #include <keys.bas>
 
+#define DEBUG 0
 
 ' colores
 #define NEGRO 0
@@ -109,13 +111,13 @@ dim c as ubyte
 dim k as string
 dim muerto as ubyte=0
 '~ dim muerteseq as ubyte = 6
-dim fantasmas_miedosos = 0
+dim fantasmasMiedosos as ubyte = 0
 
 ' Movimientos de fantasmas
 ' definimos varias rutas, en este caso 3
 ' cada ruta son 4 posiciones que va a intentar alternativamente
 dim rutas(2,3,1) as ubyte => { _
-  { {0,0}, {0,0}, {0,0}, {0,0} } , _
+  { {0,1}, {0,-1}, {1,0}, {-1,0} } , _
   { {0,-1}, {1,0}, {0,1}, {-1,0} } , _
   { {0,-1}, {-1,0}, {0,1}, {1,0} }  _
 }
@@ -184,6 +186,10 @@ dim pantallaInicial(panMaxF,panMaxC) as ubyte => { _
 {  4,  2,  2,  2,  2,2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  5} _
 }
 
+sub debug
+  print at 23,9; ink ROJO; muerto
+  print at 23,11; ink ROJO; vidas  
+end sub
 
 SUB graphicsBank (bank as uByte)
 
@@ -236,7 +242,6 @@ SUB graphicsBank (bank as uByte)
  END ASM
 
 END SUB
-
 
 sub pantallaMenu()
 	paper NEGRO: border NEGRO: ink NEGRO: cls
@@ -305,9 +310,10 @@ end sub
 
 sub mostrarVidas()
 	' mostrar vidas
+	print at FVIDAS,CVIDAS;ink AMARILLO; paper AZUL; BRIGHT 1; "     " 
 	c=CVIDAS
 	for i = 1 to vidas
-		print at FVIDAS,c;ink AMARILLO; paper AZUL; "\B" 'chr$(145)
+		print at FVIDAS,c;ink AMARILLO; paper AZUL; BRIGHT 1; "\B" 'chr$(145)
 		c=c+2
 	next
 end sub
@@ -318,12 +324,7 @@ sub muertePacman()
 		print at y, x; ink AMARILLO; chr(144+i)
 		pause 20
 	next
-	muerto=0
-	'~ muerteseq=muerteseq+1
-	'~ if muerteseq>10 then
-		'~ muerteseq=6
-		'~ muerto=0
-	'~ end if
+  print at y, x; " "
 end sub
 
 function canMove(c as ubyte, f as ubyte) as ubyte
@@ -345,6 +346,7 @@ function dif(a as ubyte, b as ubyte)
 		return 1
 	else
 		return -1
+	end if
 end function
 
 function moverFantasma(fantasma as ubyte, movindex as ubyte)
@@ -357,7 +359,7 @@ function moverFantasma(fantasma as ubyte, movindex as ubyte)
 	'   hay dos situaciones de movimiento, una para los fantasmas vivos y otra para los muertos (o para todos si estan en modo miedo)
 	'   si esta vivo sigue su rutina, si esta muerto vuelve a casa
 
-	dim f,c,fn,cn,i,ruta as ubyte
+	dim f,c,fn,cn,i,ruta,dx,dy as ubyte
 	dim mueve as ubyte = 1
 
 	' esta comprobacion no hace falta pues la realiza moverFantasmas, esta por seguridad, se puede borrar para ganar velocidad
@@ -370,17 +372,25 @@ function moverFantasma(fantasma as ubyte, movindex as ubyte)
 	' posicion actual (f,c) -> posicion nueva (fn,cn)
 	f=fantasmas(fantasma,Y): c=fantasmas(fantasma,X)
 	if ruta=SEARCHDESTROY then
-		if (x - c) > (f - y) then
-			fn=0: cn=dif(x,c)
+    dx=dif(x,c): dy=dif(y,f)
+		if (x - c) > (f - y) and canMove(c+dx,f)=1 then
+			dy=0
 		else
-			fn=dif(y,f): cn=0
+			dx=0
 		end if
+    ' si no puede mover donde debe, buscar una salida usando la ruta 0
+    i=0
+    do while canMove(c+dx,f+dy)=0 
+      dy=rutas(0,i,Y): dx=rutas(0,i,X) 
+      i=i+1
+    loop
 	else
-		fn=fantasmas(fantasma,Y)+rutas(ruta,movindex,Y): cn=fantasmas(fantasma,X)+rutas(ruta,movindex,X)
+		dy=rutas(ruta,movindex,Y): dx=rutas(ruta,movindex,X)
 	end if
+  fn=fantasmas(fantasma,Y)+dy: cn=fantasmas(fantasma,X)+dx
 
 	' comprobar si se come a pacman
-	if fantasmas_miedosos=0 and cn=x and fn=y then
+	if fantasmasMiedosos=0 and cn=x and fn=y then
 		muerto=1
 		'~ mueve=0
 		'~ return movindex
@@ -397,7 +407,6 @@ function moverFantasma(fantasma as ubyte, movindex as ubyte)
 	mueve=canMove(cn,fn)
 
 	if mueve=1 then
-
 		graphicsBank(0)
 		if pantalla(f,c)=255 then
 			print at f,c; " "
@@ -415,7 +424,10 @@ function moverFantasma(fantasma as ubyte, movindex as ubyte)
 		' se pasa al siguiente movimiento, pero no se mueve (print) hasta siguiente ciclo
 		movindex=(movindex+1) mod 4
 	end if
-print at 23,0; ink fantasmas(fantasma,COLORT); fn; ":" ; cn; "-"; movindex; "   "
+'if DEBUG = 1
+'   print at 23,0; ink fantasmas(fantasma,COLORT); fn; ":" ; cn; "-"; movindex; "   "
+'   pause 100
+'end if
 	return movindex
 end function
 
@@ -445,6 +457,7 @@ function getFantasmaXY(x as ubyte, y as ubyte)
 			return f
 		end if
 	next
+  return -1
 end function
 
 sub initFantasma(f as ubyte, x as ubyte, y as ubyte, color as ubyte, brillo as ubyte, ruta as ubyte, vivo as ubyte)
@@ -490,6 +503,16 @@ sub moverPacMan(dir as ubyte)
 
 	c=x : f=y
 
+  'chocamos con fantasma?
+  if getFantasmaXY(x,y) > -1 then
+		if fantasmasMiedosos=1 then
+			puntos=puntos+PUNTOSFAN
+			fantasmas(getFantasmaXY(x,y),ESTADOVITAL)=MUERTO
+		else
+			muerto=1
+		end if
+	end if
+
 	' no switch no zen
 	if pantalla(f,c)=DOT then
 		puntos=puntos+PUNTOSDOT
@@ -497,17 +520,10 @@ sub moverPacMan(dir as ubyte)
 	end if
 	if pantalla(f,c)=PIL then
 		puntos=puntos+PUNTOSPIL
-		fantasmas_miedosos=1
+		fantasmasMiedosos=1
 		pildoras=pildoras-1
 	end if
-	if pantalla(f,c)=FANTASMA then
-		if fantasmas_miedosos=1 then
-			puntos=puntos+PUNTOSFAN
-			fantasmas(getFantasmaXY(x,y),ESTADOVITAL)=MUERTO
-		else
-			muerto=1
-		end if
-	end if
+
 	if pantalla(f,c)=BANANA then
 		puntos=puntos+PUNTOSBAN
 	end if
@@ -533,20 +549,24 @@ function GameOver() as ubyte
 	end if
 end function
 
-sub inicializarJuego()
-	dim f,g as ubyte
-	puntos=0
-	vidas=NVIDAS
+sub posicionesIniciales()
 	muerto=0
-	'~ muerteseq=6
 	x=CPACMAN
 	y=FPACMAN
 	xv=x
 	yv=y
 
 	initFantasma(RED,CMSG,FMSG1+1,ROJO,0,SEARCHDESTROY,VIVO)
-	initFantasma(PINK,CMSG+6,FMSG2-1,MORADO,1,0,VIVO)
-	initFantasma(CYAN,CMSG+3,FMSG1,CIELO,0,1,VIVO)
+	initFantasma(PINK,CMSG+6,FMSG2-1,MORADO,1,1,VIVO)
+	initFantasma(CYAN,CMSG+3,FMSG1,CIELO,0,2,VIVO)
+end sub
+
+sub inicializarJuego()
+	dim f,g as ubyte
+	puntos=0
+	vidas=NVIDAS
+	muerto=0
+  posicionesIniciales()
 
 	for f = 0 to panMaxF
 	  for g = 0 to panMaxC
@@ -563,7 +583,6 @@ sub inicializarJuego()
 	pause 0
 	mostrarVidas()
 	mostrarSprites()
-
 end sub
 
 sub juego()
@@ -574,13 +593,20 @@ sub juego()
 		'asm
 		'halt
 		'end asm
-print at 23,7; muerto
-print at 23,9; vidas
+
+if DEBUG = 1 then
+debug
+end if
 
 		if muerto=1 then
 			muertePacman()
 			vidas=vidas-1
 			mostrarVidas()
+      for i=0 to FANTASMAS-1        
+        print at fantasmas(i,Y),fantasmas(i,X); " "
+      next
+	    posicionesIniciales()
+    	print at y,x; ink AMARILLO; chr(anim(fanim))
 			continue do
 		end if
 
